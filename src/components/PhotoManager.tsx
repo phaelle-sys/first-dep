@@ -29,6 +29,7 @@ export function PhotoManager({
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({ url: "", caption: "" });
   const [lightbox, setLightbox] = useState<string | null>(null);
+  const [visible, setVisible] = useState(60);
 
   async function upload(file: File) {
     setUploading(true);
@@ -93,33 +94,44 @@ export function PhotoManager({
           description="Ajoutez des visuels du bien ou de l'unité."
         />
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          {photos.map((p) => (
-            <div
-              key={p.id}
-              className="group relative aspect-[4/3] overflow-hidden rounded-xl border border-white/5 bg-ink-900"
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={p.url}
-                alt={p.caption ?? "Photo"}
-                className="h-full w-full cursor-pointer object-cover transition group-hover:scale-105"
-                onClick={() => setLightbox(p.url)}
-              />
-              <button
-                onClick={() => remove(p.id)}
-                className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-lg bg-black/60 text-white opacity-0 backdrop-blur transition hover:bg-red-500/80 group-hover:opacity-100"
+        <>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {photos.slice(0, visible).map((p) => (
+              <div
+                key={p.id}
+                className="group relative aspect-[4/3] overflow-hidden rounded-xl border border-white/5 bg-ink-900"
               >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-              {p.caption && (
-                <p className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/80 to-transparent px-2 py-1.5 text-xs text-white">
-                  {p.caption}
-                </p>
-              )}
-            </div>
-          ))}
-        </div>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={p.url}
+                  alt={p.caption ?? "Photo"}
+                  loading="lazy"
+                  className="h-full w-full cursor-pointer object-cover transition group-hover:scale-105"
+                  onClick={() => setLightbox(p.url)}
+                />
+                <button
+                  onClick={() => remove(p.id)}
+                  className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-lg bg-black/60 text-white opacity-0 backdrop-blur transition hover:bg-red-500/80 group-hover:opacity-100"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+                {p.caption && (
+                  <p className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/80 to-transparent px-2 py-1.5 text-xs text-white">
+                    {p.caption}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+          {photos.length > visible && (
+            <button
+              onClick={() => setVisible((v) => v + 60)}
+              className="btn-ghost mt-3 w-full text-xs"
+            >
+              Afficher plus ({photos.length - visible} restantes)
+            </button>
+          )}
+        </>
       )}
 
       <Modal open={open} onClose={() => setOpen(false)} title="Ajouter une photo">
