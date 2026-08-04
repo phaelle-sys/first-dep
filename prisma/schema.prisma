@@ -1,0 +1,155 @@
+// Prisma schema — CRM immobilier
+// Modèle: un Bien (immeuble/maison/...) peut être divisé en plusieurs Unités autonomes.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────
+// BIEN  (immeuble, maison, immeuble de rapport, etc.)
+// ─────────────────────────────────────────────────────────────
+model Bien {
+  id            String   @id @default(cuid())
+  reference     String?  @unique
+  name          String
+  type          String // PropertyType — voir src/lib/enums.ts
+  status        String   @default("EN_PREPARATION") // BienStatus
+  address       String?
+  city          String?
+  postalCode    String?
+  country       String?  @default("Belgique")
+  description   String?
+  price         Float? // prix global éventuel
+  surface       Float? // surface totale (m²)
+  yearBuilt     Int?
+  coverImage    String?
+  driveFolderId String? // dossier Google Drive synchronisé
+  latitude      Float?
+  longitude     Float?
+
+  units     Unit[]
+  documents Document[]
+  photos    Photo[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([type])
+}
+
+// ─────────────────────────────────────────────────────────────
+// UNITÉ  (autonome : chaque unité a sa propre fiche/statut/prix)
+// ─────────────────────────────────────────────────────────────
+model Unit {
+  id          String  @id @default(cuid())
+  bienId      String
+  bien        Bien    @relation(fields: [bienId], references: [id], onDelete: Cascade)
+  reference   String?
+  name        String // ex: "Appartement 1A", "Studio RDC"
+  type        String // PropertyType (une unité a son propre type)
+  status      String  @default("DISPONIBLE") // UnitStatus (statut de vente)
+  floor       String? // étage
+  surface     Float? // m²
+  rooms       Int? // nombre de pièces
+  bedrooms    Int? // chambres
+  bathrooms   Int?
+  price       Float? // prix de vente de l'unité
+  rentPrice   Float? // loyer éventuel
+  charges     Float?
+  epcScore    String? // PEB (certificat énergétique)
+  description String?
+  coverImage  String?
+  driveFolderId String?
+
+  documents Document[]
+  photos    Photo[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([bienId])
+  @@index([status])
+}
+
+// ─────────────────────────────────────────────────────────────
+// DOCUMENT  (PDF, contrats, plans... — manuel ou depuis Drive)
+// ─────────────────────────────────────────────────────────────
+model Document {
+  id          String  @id @default(cuid())
+  name        String
+  url         String
+  mimeType    String?
+  size        Int?
+  category    String? @default("AUTRE") // DocumentCategory
+  source      String  @default("MANUAL") // MANUAL | DRIVE
+  driveFileId String?
+
+  bienId String?
+  bien   Bien?   @relation(fields: [bienId], references: [id], onDelete: Cascade)
+  unitId String?
+  unit   Unit?   @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([bienId])
+  @@index([unitId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// PHOTO
+// ─────────────────────────────────────────────────────────────
+model Photo {
+  id          String  @id @default(cuid())
+  url         String
+  caption     String?
+  source      String  @default("MANUAL") // MANUAL | DRIVE
+  driveFileId String?
+  position    Int     @default(0)
+
+  bienId String?
+  bien   Bien?   @relation(fields: [bienId], references: [id], onDelete: Cascade)
+  unitId String?
+  unit   Unit?   @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([bienId])
+  @@index([unitId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// NOTIFICATION  (alertes équipe : nouveau bien, document, statut…)
+// ─────────────────────────────────────────────────────────────
+model Notification {
+  id         String  @id @default(cuid())
+  type       String // NotificationType
+  title      String
+  message    String?
+  entityType String? // BIEN | UNIT | DOCUMENT
+  entityId   String?
+  href       String?
+  read       Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([read])
+  @@index([createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────
+// SYNC LOG  (traçabilité des synchronisations Drive)
+// ─────────────────────────────────────────────────────────────
+model SyncLog {
+  id        String   @id @default(cuid())
+  status    String // SUCCESS | ERROR | SKIPPED
+  message   String?
+  filesAdded Int     @default(0)
+  createdAt DateTime @default(now())
+}
