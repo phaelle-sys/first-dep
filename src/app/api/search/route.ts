@@ -10,10 +10,10 @@ export async function GET(req: NextRequest) {
     prisma.bien.findMany({
       where: {
         OR: [
-          { name: { contains: q } },
-          { city: { contains: q } },
-          { address: { contains: q } },
-          { reference: { contains: q } },
+          { name: { contains: q, mode: "insensitive" } },
+          { city: { contains: q, mode: "insensitive" } },
+          { address: { contains: q, mode: "insensitive" } },
+          { reference: { contains: q, mode: "insensitive" } },
         ],
       },
       take: 6,
@@ -21,8 +21,8 @@ export async function GET(req: NextRequest) {
     prisma.unit.findMany({
       where: {
         OR: [
-          { name: { contains: q } },
-          { reference: { contains: q } },
+          { name: { contains: q, mode: "insensitive" } },
+          { reference: { contains: q, mode: "insensitive" } },
         ],
       },
       include: { bien: true },

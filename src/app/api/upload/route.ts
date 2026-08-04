@@ -5,6 +5,19 @@ import path from "path";
 // Upload local : enregistre le fichier dans /public/uploads et renvoie l'URL.
 // (Pour la production, brancher un stockage objet type S3/GCS.)
 export async function POST(req: NextRequest) {
+  // Les hébergements serverless (Vercel…) ont un système de fichiers en
+  // lecture seule : le téléversement local n'y est pas persistant. Dans ce cas,
+  // on invite à coller une URL (ou à passer par la synchronisation Drive).
+  if (process.env.VERCEL || process.env.DISABLE_LOCAL_UPLOAD) {
+    return NextResponse.json(
+      {
+        error:
+          "Téléversement local indisponible en ligne. Collez une URL, ou importez le fichier via Google Drive.",
+      },
+      { status: 501 }
+    );
+  }
+
   const form = await req.formData();
   const file = form.get("file");
 

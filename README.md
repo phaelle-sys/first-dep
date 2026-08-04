@@ -150,9 +150,39 @@ src/
     prisma.ts        # Client Prisma
 ```
 
+## 🌐 Déploiement en ligne (gratuit)
+
+L'app se déploie sur **Vercel** (hébergement gratuit) avec une base
+**PostgreSQL Neon** (offre gratuite). Étapes :
+
+1. **Base de données** — créez un compte sur [neon.tech](https://neon.tech),
+   créez un projet, copiez la chaîne de connexion (`postgresql://…?sslmode=require`).
+2. **Schéma** — en local, mettez cette chaîne dans `.env` (`DATABASE_URL`) puis :
+   ```bash
+   npm run db:push       # crée les tables sur Neon
+   # npm run db:seed     # (optionnel) données de démo ; inutile si import Drive
+   ```
+3. **Hébergement** — sur [vercel.com](https://vercel.com), importez ce dépôt
+   GitHub. Dans **Settings → Environment Variables**, ajoutez :
+   - `DATABASE_URL` (la chaîne Neon)
+   - `GOOGLE_SERVICE_ACCOUNT_JSON`, `DRIVE_ROOT_FOLDER_ID` (pour la synchro Drive)
+   - `NOTIFY_WEBHOOK_URL` (optionnel)
+4. **Déployez.** Vercel exécute `npm run build` (qui génère le client Prisma).
+   L'app est en ligne, accessible à toute l'équipe.
+
+> **Téléversement de fichiers en ligne** : l'hébergement serverless a un système
+> de fichiers en lecture seule. Le téléversement local est donc désactivé sur
+> Vercel — ajoutez les fichiers via une **URL** ou via la **synchronisation
+> Drive**. Pour réactiver l'upload en ligne, branchez un stockage objet
+> (Vercel Blob, S3, GCS).
+
 ## 📝 Notes
 
-- Les fichiers téléversés manuellement sont stockés dans `public/uploads/`.
-  Pour la production, branchez un stockage objet (S3 / GCS).
-- SQLite convient au démarrage ; pour un usage multi-utilisateurs, passez à
-  PostgreSQL en changeant `provider` et `DATABASE_URL` dans `prisma/schema.prisma`.
+- **Base de données** : PostgreSQL par défaut (déploiement). Pour un usage
+  100 % local sans Postgres, repassez `provider` à `sqlite` et
+  `DATABASE_URL="file:./dev.db"` dans `prisma/schema.prisma`.
+- Les fichiers téléversés en local sont stockés dans `public/uploads/`.
+  En production, préférez un stockage objet (Vercel Blob / S3 / GCS).
+- **Unités** : créées manuellement pour l'instant (les dossiers Drive n'ont pas
+  tous la même structure). L'interface gère type (appartement, duplex, studio,
+  commerce…), étage, statut de vente et caractéristiques par unité.

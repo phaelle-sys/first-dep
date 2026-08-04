@@ -5,6 +5,7 @@ export type PropertyType =
   | "IMMEUBLE"
   | "MAISON"
   | "APPARTEMENT"
+  | "DUPLEX"
   | "STUDIO"
   | "COMMERCE"
   | "GARAGE"
@@ -19,6 +20,7 @@ export const PROPERTY_TYPES: Record<
   IMMEUBLE: { label: "Immeuble", icon: "Building" },
   MAISON: { label: "Maison", icon: "Home" },
   APPARTEMENT: { label: "Appartement", icon: "DoorOpen" },
+  DUPLEX: { label: "Duplex", icon: "Layers" },
   STUDIO: { label: "Studio", icon: "BedDouble" },
   COMMERCE: { label: "Commerce", icon: "Store" },
   GARAGE: { label: "Garage", icon: "Car" },

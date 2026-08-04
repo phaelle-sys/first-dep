@@ -8,6 +8,7 @@ import {
   Car,
   Warehouse,
   Trees,
+  Layers,
   type LucideProps,
 } from "lucide-react";
 import { PROPERTY_TYPES, type PropertyType } from "@/lib/enums";
@@ -22,6 +23,7 @@ const ICONS: Record<string, React.ComponentType<LucideProps>> = {
   Car,
   Warehouse,
   Trees,
+  Layers,
 };
 
 export function PropertyIcon({

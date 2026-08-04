@@ -5,7 +5,11 @@ import { NotificationBell } from "./NotificationBell";
 import { GlobalSearch } from "./GlobalSearch";
 
 export async function Topbar() {
-  const unread = await prisma.notification.count({ where: { read: false } });
+  // Résilient : si la base est injoignable (build, DB down…), on affiche 0
+  // plutôt que de faire échouer le rendu de toute l'application.
+  const unread = await prisma.notification
+    .count({ where: { read: false } })
+    .catch(() => 0);
 
   return (
     <header className="sticky top-0 z-20 border-b border-white/5 bg-ink-950/70 backdrop-blur-md">
