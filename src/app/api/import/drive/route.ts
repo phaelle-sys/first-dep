@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { importFromRoot } from "@/lib/sync";
 
+// L'import parcourt plusieurs dossiers Drive : on autorise jusqu'à 60 s
+// (maximum de l'offre gratuite Vercel) pour éviter une coupure prématurée.
+export const maxDuration = 60;
+export const dynamic = "force-dynamic";
+
 // Import automatique depuis un dossier racine « immobilier »
 // (un sous-dossier = une adresse = un bien).
 export async function POST(req: NextRequest) {
