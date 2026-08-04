@@ -92,15 +92,30 @@ GOOGLE_CLIENT_SECRET="..."
 GOOGLE_REFRESH_TOKEN="..."
 ```
 
-Ensuite :
+### Import automatique par dossier racine (recommandé)
 
-1. Partagez vos dossiers Drive avec le compte de service.
-2. Sur chaque bien, renseignez l'**ID du dossier Drive**.
+Si votre Drive est organisé avec **un dossier racine** (ex. `immobilier`)
+contenant **un sous-dossier par adresse** (`CODE - Adresse`), l'app peut tout
+importer d'un coup :
+
+1. Partagez le dossier racine avec le compte de service.
+2. Renseignez son ID dans `DRIVE_ROOT_FOLDER_ID` (ou saisissez-le sur la page
+   **Synchronisation**).
+3. Cliquez sur **Importer le portefeuille**.
+
+Pour chaque sous-dossier d'adresse, un **bien** est créé (référence + adresse
+déduites du nom `CODE - Adresse`), et son arborescence est parcourue
+récursivement : les images deviennent des **photos**, les autres fichiers des
+**documents** dont la catégorie est déduite du nom du sous-dossier (ex.
+`Devis Travaux` → Financier, `Attestation Urbanistique` → Juridique). L'import
+est **ré-exécutable** sans créer de doublons.
+
+### Import par bien (manuel)
+
+1. Partagez le dossier du bien avec le compte de service.
+2. Sur la fiche du bien, renseignez l'**ID du dossier Drive**.
 3. Cliquez sur **Synchroniser Drive** (fiche du bien) ou **Tout synchroniser**
    (page Synchronisation).
-
-Les images deviennent des photos, les autres fichiers des documents
-(catégorisés automatiquement d'après leur nom).
 
 ## 🔔 Notifications sortantes (optionnelles)
 

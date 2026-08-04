@@ -10,6 +10,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import { isDriveConfigured } from "@/lib/drive";
 import { SyncAllButton } from "@/components/SyncAllButton";
+import { RootImport } from "@/components/RootImport";
 import { PropertyIcon } from "@/components/PropertyIcon";
 import { formatDateTime } from "@/lib/utils";
 
@@ -84,6 +85,12 @@ export default async function SyncPage() {
           <SyncAllButton bienIds={linked.map((b) => b.id)} />
         )}
       </div>
+
+      {/* Import automatique depuis le dossier racine */}
+      <RootImport
+        defaultFolderId={process.env.DRIVE_ROOT_FOLDER_ID ?? ""}
+        disabled={!configured}
+      />
 
       {!configured && (
         <div className="card p-5">

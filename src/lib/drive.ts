@@ -99,6 +99,18 @@ export async function listFolderFiles(folderId: string): Promise<DriveFile[]> {
   return files;
 }
 
+const FOLDER_MIME = "application/vnd.google-apps.folder";
+
+export function isFolder(mimeType: string): boolean {
+  return mimeType === FOLDER_MIME;
+}
+
+/** Liste uniquement les sous-dossiers d'un dossier Drive. */
+export async function listSubfolders(folderId: string): Promise<DriveFile[]> {
+  const all = await listFolderFiles(folderId);
+  return all.filter((f) => isFolder(f.mimeType));
+}
+
 export function isImage(mimeType: string): boolean {
   return IMAGE_MIME.test(mimeType);
 }
