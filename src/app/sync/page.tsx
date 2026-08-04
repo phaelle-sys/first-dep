@@ -79,6 +79,13 @@ export default async function SyncPage() {
                 ? "La synchronisation est active. Associez un dossier Drive à chaque bien pour importer ses fichiers."
                 : "Renseignez vos identifiants dans le fichier .env (compte de service ou OAuth) pour activer la synchronisation automatique. L'application reste pleinement utilisable en saisie manuelle."}
             </p>
+            {configured && (
+              <p className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-brand-500/10 px-2.5 py-1 text-xs text-brand-300">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                Synchronisation automatique quotidienne active (ajouts &amp;
+                suppressions) — vers 03h00 UTC.
+              </p>
+            )}
           </div>
         </div>
         {configured && linked.length > 0 && (

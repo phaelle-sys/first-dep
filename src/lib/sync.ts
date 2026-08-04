@@ -3,12 +3,14 @@
 // Stratégie (adaptée aux limites de temps du serverless) :
 //   • createBiensFromRoot(folderId) : crée/complète UN bien par sous-dossier
 //     d'adresse — rapide (1 listing + quelques upserts). Ne lit pas les fichiers.
-//   • syncBien(bienId)              : importe les fichiers d'UN bien, dans sa
-//     propre requête. Lecture Drive parallélisée + insertions groupées.
+//   • syncBien(bienId)              : RÉCONCILIE les fichiers d'UN bien (ajoute
+//     les nouveaux, retire ceux disparus du Drive), dans sa propre requête.
+//   • fullSync(folderId)            : synchro complète (tous les biens) — pour
+//     le Cron quotidien.
 //
-// L'interface enchaîne : d'abord créer les biens, puis synchroniser chaque
-// bien un par un (barre de progression côté client). Chaque requête reste
-// courte et passe sous la limite Vercel.
+// Réconciliation : seuls les enregistrements issus du Drive (source = "DRIVE")
+// sont concernés — les ajouts manuels sont préservés. Si un dossier est
+// illisible (erreur réseau, dossier supprimé), on n'efface RIEN par sécurité.
 
 import { prisma } from "./prisma";
 import {
@@ -25,7 +27,8 @@ import type { DocumentCategory } from "./enums";
 
 const MAX_DEPTH = 6;
 const WALK_CONCURRENCY = 10;
-const INSERT_CHUNK = 500; // limite les paramètres par requête (limite Postgres)
+const BIEN_CONCURRENCY = 3;
+const CHUNK = 500; // limite les paramètres par requête (limite Postgres)
 
 function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
@@ -33,15 +36,6 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
-export type SyncResult = {
-  configured: boolean;
-  status: "SUCCESS" | "ERROR" | "SKIPPED";
-  message: string;
-  filesAdded: number;
-  photosAdded: number;
-};
-
-// ── Petit pool de concurrence ───────────────────────────────
 async function mapPool<T, R>(
   items: T[],
   concurrency: number,
@@ -147,45 +141,54 @@ async function collectTree(
     }
   }
 
-  // Explore les sous-dossiers en parallèle (concurrence bornée).
   await mapPool(subfolders, WALK_CONCURRENCY, (sf) =>
     collectTree(sf.id, sf.hint, depth + 1, acc)
   );
 }
 
-// ── Importe le contenu d'un dossier dans un bien (insertions groupées) ──
-async function importFolderIntoBien(
+export type ReconcileCounts = {
+  filesAdded: number;
+  photosAdded: number;
+  filesRemoved: number;
+  photosRemoved: number;
+};
+
+// ── Réconcilie le contenu d'un dossier avec un bien ─────────
+async function reconcileBienFiles(
   bienId: string,
   folderId: string
-): Promise<{ filesAdded: number; photosAdded: number }> {
-  const [existingDocs, existingPhotos] = await Promise.all([
-    prisma.document.findMany({
-      where: { bienId, source: "DRIVE" },
-      select: { driveFileId: true },
-    }),
-    prisma.photo.findMany({
-      where: { bienId, source: "DRIVE" },
-      select: { driveFileId: true },
-    }),
-  ]);
-  const knownDocs = new Set(existingDocs.map((d) => d.driveFileId));
-  const knownPhotos = new Set(existingPhotos.map((p) => p.driveFileId));
-
+): Promise<ReconcileCounts> {
+  // Lecture Drive (peut lever une exception -> propagée, aucune suppression).
   const acc: Collected = { documents: [], photos: [] };
   await collectTree(folderId, null, 0, acc);
 
-  // Dédoublonnage (vs base + au sein du lot).
-  const seenDocs = new Set<string>();
+  const currentDocIds = new Set(acc.documents.map((d) => d.fileId));
+  const currentPhotoIds = new Set(acc.photos.map((p) => p.fileId));
+
+  const [existingDocs, existingPhotos] = await Promise.all([
+    prisma.document.findMany({
+      where: { bienId, source: "DRIVE" },
+      select: { id: true, driveFileId: true },
+    }),
+    prisma.photo.findMany({
+      where: { bienId, source: "DRIVE" },
+      select: { id: true, driveFileId: true },
+    }),
+  ]);
+  const knownDocIds = new Set(existingDocs.map((d) => d.driveFileId));
+  const knownPhotoIds = new Set(existingPhotos.map((p) => p.driveFileId));
+
+  // AJOUTS (dédoublonnés vs base + au sein du lot).
+  const seenD = new Set<string>();
   const newDocs = acc.documents.filter(
-    (d) => !knownDocs.has(d.fileId) && !seenDocs.has(d.fileId) && seenDocs.add(d.fileId)
+    (d) => !knownDocIds.has(d.fileId) && !seenD.has(d.fileId) && seenD.add(d.fileId)
   );
-  const seenPhotos = new Set<string>();
+  const seenP = new Set<string>();
   const newPhotos = acc.photos.filter(
-    (p) =>
-      !knownPhotos.has(p.fileId) && !seenPhotos.has(p.fileId) && seenPhotos.add(p.fileId)
+    (p) => !knownPhotoIds.has(p.fileId) && !seenP.has(p.fileId) && seenP.add(p.fileId)
   );
 
-  for (const batch of chunk(newDocs, INSERT_CHUNK)) {
+  for (const batch of chunk(newDocs, CHUNK)) {
     await prisma.document.createMany({
       data: batch.map((d) => ({
         name: d.name,
@@ -199,7 +202,7 @@ async function importFolderIntoBien(
       })),
     });
   }
-  for (const batch of chunk(newPhotos, INSERT_CHUNK)) {
+  for (const batch of chunk(newPhotos, CHUNK)) {
     await prisma.photo.createMany({
       data: batch.map((p) => ({
         url: p.url,
@@ -211,7 +214,27 @@ async function importFolderIntoBien(
     });
   }
 
-  return { filesAdded: newDocs.length, photosAdded: newPhotos.length };
+  // SUPPRESSIONS (fichiers Drive disparus). Uniquement source = DRIVE.
+  const docIdsToDelete = existingDocs
+    .filter((d) => !d.driveFileId || !currentDocIds.has(d.driveFileId))
+    .map((d) => d.id);
+  const photoIdsToDelete = existingPhotos
+    .filter((p) => !p.driveFileId || !currentPhotoIds.has(p.driveFileId))
+    .map((p) => p.id);
+
+  for (const batch of chunk(docIdsToDelete, CHUNK)) {
+    await prisma.document.deleteMany({ where: { id: { in: batch } } });
+  }
+  for (const batch of chunk(photoIdsToDelete, CHUNK)) {
+    await prisma.photo.deleteMany({ where: { id: { in: batch } } });
+  }
+
+  return {
+    filesAdded: newDocs.length,
+    photosAdded: newPhotos.length,
+    filesRemoved: docIdsToDelete.length,
+    photosRemoved: photoIdsToDelete.length,
+  };
 }
 
 // ── Phase 1 : créer/compléter les biens depuis le dossier racine ──
@@ -287,13 +310,6 @@ export async function createBiensFromRoot(
       });
     }
 
-    await prisma.syncLog.create({
-      data: {
-        status: "SUCCESS",
-        message: `Import racine : ${base.created} bien(s) créé(s), ${base.updated} déjà présent(s).`,
-        filesAdded: 0,
-      },
-    });
     base.message = `${base.created} bien(s) créé(s), ${base.updated} déjà présent(s).`;
     return base;
   } catch (e) {
@@ -303,58 +319,59 @@ export async function createBiensFromRoot(
   }
 }
 
-// ── Phase 2 : synchroniser les fichiers d'un bien ───────────
+export type SyncResult = {
+  configured: boolean;
+  status: "SUCCESS" | "ERROR" | "SKIPPED";
+  message: string;
+  filesAdded: number;
+  photosAdded: number;
+  filesRemoved: number;
+  photosRemoved: number;
+};
+
+// ── Synchronise (réconcilie) UN bien ────────────────────────
 export async function syncBien(bienId: string): Promise<SyncResult> {
+  const zero = { filesAdded: 0, photosAdded: 0, filesRemoved: 0, photosRemoved: 0 };
   if (!isDriveConfigured()) {
     return {
       configured: false,
       status: "SKIPPED",
       message: "Google Drive n'est pas configuré.",
-      filesAdded: 0,
-      photosAdded: 0,
+      ...zero,
     };
   }
 
   const bien = await prisma.bien.findUnique({ where: { id: bienId } });
   if (!bien) {
-    return {
-      configured: true,
-      status: "ERROR",
-      message: "Bien introuvable.",
-      filesAdded: 0,
-      photosAdded: 0,
-    };
+    return { configured: true, status: "ERROR", message: "Bien introuvable.", ...zero };
   }
   if (!bien.driveFolderId) {
     return {
       configured: true,
       status: "SKIPPED",
       message: "Aucun dossier Drive associé à ce bien.",
-      filesAdded: 0,
-      photosAdded: 0,
+      ...zero,
     };
   }
 
   try {
-    const { filesAdded, photosAdded } = await importFolderIntoBien(
-      bien.id,
-      bien.driveFolderId
-    );
-    const total = filesAdded + photosAdded;
+    const c = await reconcileBienFiles(bien.id, bien.driveFolderId);
+    const changed =
+      c.filesAdded + c.photosAdded + c.filesRemoved + c.photosRemoved;
 
     await prisma.syncLog.create({
       data: {
         status: "SUCCESS",
-        message: `Bien « ${bien.name} » : ${filesAdded} document(s), ${photosAdded} photo(s).`,
-        filesAdded: total,
+        message: `Bien « ${bien.name} » : +${c.filesAdded} doc / +${c.photosAdded} photo · -${c.filesRemoved} doc / -${c.photosRemoved} photo.`,
+        filesAdded: c.filesAdded + c.photosAdded,
       },
     });
 
-    if (total > 0) {
+    if (changed > 0) {
       await createNotification({
         type: "DRIVE_SYNC",
         title: `Synchronisation Drive — ${bien.name}`,
-        message: `${filesAdded} document(s) et ${photosAdded} photo(s) importés.`,
+        message: `Ajouts : ${c.filesAdded} doc, ${c.photosAdded} photo. Retraits : ${c.filesRemoved} doc, ${c.photosRemoved} photo.`,
         entityType: "BIEN",
         entityId: bien.id,
         href: `/biens/${bien.id}`,
@@ -364,22 +381,101 @@ export async function syncBien(bienId: string): Promise<SyncResult> {
     return {
       configured: true,
       status: "SUCCESS",
-      message:
-        total > 0
-          ? `${filesAdded} document(s) et ${photosAdded} photo(s) importés.`
-          : "Déjà à jour.",
-      filesAdded,
-      photosAdded,
+      message: changed > 0 ? "Synchronisé." : "Déjà à jour.",
+      ...c,
     };
   } catch (e) {
     const message = e instanceof Error ? e.message : "Erreur inconnue";
     await prisma.syncLog.create({ data: { status: "ERROR", message } });
-    return {
-      configured: true,
-      status: "ERROR",
-      message: `Échec : ${message}`,
-      filesAdded: 0,
-      photosAdded: 0,
-    };
+    return { configured: true, status: "ERROR", message: `Échec : ${message}`, ...zero };
   }
+}
+
+// ── Synchro complète (Cron quotidien) ───────────────────────
+export type FullSyncResult = {
+  configured: boolean;
+  status: "SUCCESS" | "ERROR" | "SKIPPED";
+  message: string;
+  biensCreated: number;
+  filesAdded: number;
+  photosAdded: number;
+  filesRemoved: number;
+  photosRemoved: number;
+  errors: string[];
+};
+
+export async function fullSync(rootFolderId: string): Promise<FullSyncResult> {
+  const res: FullSyncResult = {
+    configured: isDriveConfigured(),
+    status: "SUCCESS",
+    message: "",
+    biensCreated: 0,
+    filesAdded: 0,
+    photosAdded: 0,
+    filesRemoved: 0,
+    photosRemoved: 0,
+    errors: [],
+  };
+
+  if (!isDriveConfigured()) {
+    return { ...res, status: "SKIPPED", message: "Google Drive non configuré." };
+  }
+  if (!rootFolderId.trim()) {
+    return { ...res, status: "ERROR", message: "Dossier racine manquant." };
+  }
+
+  // 1) Créer les biens des nouveaux dossiers d'adresse.
+  const create = await createBiensFromRoot(rootFolderId);
+  if (create.status === "ERROR") {
+    return { ...res, status: "ERROR", message: create.message };
+  }
+  res.biensCreated = create.created;
+
+  // 2) Réconcilier les fichiers de chaque bien lié (en parallèle borné).
+  const biens = await prisma.bien.findMany({
+    where: { driveFolderId: { not: null } },
+    select: { id: true, name: true, driveFolderId: true },
+  });
+
+  await mapPool(biens, BIEN_CONCURRENCY, async (b) => {
+    try {
+      const c = await reconcileBienFiles(b.id, b.driveFolderId!);
+      res.filesAdded += c.filesAdded;
+      res.photosAdded += c.photosAdded;
+      res.filesRemoved += c.filesRemoved;
+      res.photosRemoved += c.photosRemoved;
+    } catch (e) {
+      // Erreur de lecture d'un bien : on l'ignore (aucune suppression).
+      res.errors.push(b.name);
+    }
+  });
+
+  res.message = `${res.biensCreated} bien(s) créé(s) · +${res.filesAdded} doc / +${res.photosAdded} photo · -${res.filesRemoved} doc / -${res.photosRemoved} photo${
+    res.errors.length ? ` · ${res.errors.length} bien(s) en erreur` : ""
+  }.`;
+
+  await prisma.syncLog.create({
+    data: {
+      status: res.errors.length ? "ERROR" : "SUCCESS",
+      message: `Synchro auto — ${res.message}`,
+      filesAdded: res.filesAdded + res.photosAdded,
+    },
+  });
+
+  const changed =
+    res.biensCreated +
+    res.filesAdded +
+    res.photosAdded +
+    res.filesRemoved +
+    res.photosRemoved;
+  if (changed > 0) {
+    await createNotification({
+      type: "DRIVE_SYNC",
+      title: "Synchronisation automatique Drive",
+      message: res.message,
+      href: "/sync",
+    });
+  }
+
+  return res;
 }
