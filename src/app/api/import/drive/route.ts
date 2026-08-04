@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { importFromRoot } from "@/lib/sync";
+import { createBiensFromRoot } from "@/lib/sync";
 
-// L'import parcourt plusieurs dossiers Drive : on autorise jusqu'à 60 s
-// (maximum de l'offre gratuite Vercel) pour éviter une coupure prématurée.
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
-// Import automatique depuis un dossier racine « immobilier »
-// (un sous-dossier = une adresse = un bien).
+// Phase 1 de l'import : crée/complète un bien par sous-dossier d'adresse du
+// dossier racine, puis renvoie la liste des biens. La synchronisation des
+// fichiers se fait ensuite bien par bien (voir /api/biens/[id]/sync), pour
+// que chaque requête reste courte.
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const rootFolderId =
@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const result = await importFromRoot(rootFolderId);
+  const result = await createBiensFromRoot(rootFolderId);
   const httpStatus = result.status === "ERROR" ? 502 : 200;
   return NextResponse.json(result, { status: httpStatus });
 }
