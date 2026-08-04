@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3391ff"/>
+      <stop offset="1" stop-color="#155ce1"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <g fill="#ffffff">
+    <!-- immeuble principal -->
+    <rect x="176" y="150" width="120" height="238" rx="8"/>
+    <!-- aile droite plus basse -->
+    <rect x="300" y="210" width="72" height="178" rx="8" fill="#ffffff" opacity="0.85"/>
+    <!-- socle -->
+    <rect x="150" y="380" width="230" height="16" rx="8"/>
+  </g>
+  <!-- fenetres immeuble principal -->
+  <g fill="#1b72f5">
+    <rect x="196" y="176" width="26" height="26" rx="4"/>
+    <rect x="234" y="176" width="26" height="26" rx="4"/>
+    <rect x="196" y="220" width="26" height="26" rx="4"/>
+    <rect x="234" y="220" width="26" height="26" rx="4"/>
+    <rect x="196" y="264" width="26" height="26" rx="4"/>
+    <rect x="234" y="264" width="26" height="26" rx="4"/>
+    <rect x="196" y="308" width="26" height="26" rx="4"/>
+    <rect x="234" y="308" width="26" height="26" rx="4"/>
+  </g>
+  <!-- fenetres aile droite -->
+  <g fill="#3391ff">
+    <rect x="318" y="236" width="20" height="20" rx="4"/>
+    <rect x="344" y="236" width="20" height="20" rx="4"/>
+    <rect x="318" y="272" width="20" height="20" rx="4"/>
+    <rect x="344" y="272" width="20" height="20" rx="4"/>
+    <rect x="318" y="308" width="20" height="20" rx="4"/>
+    <rect x="344" y="308" width="20" height="20" rx="4"/>
+  </g>
+</svg>
